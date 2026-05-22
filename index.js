@@ -1,77 +1,89 @@
 const express = require('express')
-const mineflayer = require('mineflayer')
-const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
+const http = require('http')
+const path = require('path')
+const { WebSocketServer } = require('ws')
 const config = require('./config')
+const BotManager = require('./bot-manager')
 
 const app = express()
+const server = http.createServer(app)
+
+app.use(express.static(path.join(__dirname, 'public')))
+
 app.get('/health', (req, res) => res.send('OK'))
-app.get('/', (req, res) => res.send('PineconeMC Haunt Bots running'))
-const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-  console.log(`Health check server on port ${PORT}`)
-})
 
-function createBot(botConfig) {
-  const bot = mineflayer.createBot({
-    host: config.host,
-    port: config.port,
-    username: botConfig.name,
-    version: config.version,
-  })
+const wss = new WebSocketServer({ server })
 
-  bot.loadPlugin(pathfinder)
+const manager = new BotManager(config)
+manager.startAll()
 
-  bot.on('spawn', () => {
-    console.log(`${botConfig.name} spawned`)
-
-    try {
-      const mcData = require('minecraft-data')(bot.version)
-      const defaultMove = new Movements(bot, mcData)
-      bot.pathfinder.setMovements(defaultMove)
-    } catch (e) {
-      console.log(`Movements setup failed for ${botConfig.name}: ${e.message}`)
+function broadcast(data) {
+  const msg = JSON.stringify(data)
+  wss.clients.forEach(client => {
+    if (client.readyState === 1 && client.authenticated) {
+      client.send(msg)
     }
-
-    setInterval(() => {
-      if (!bot.entity) return
-      const player = bot.nearestEntity(e => e.type === 'player' && e.username !== bot.username)
-      if (player) {
-        const dist = bot.entity.position.distanceTo(player.position)
-        if (dist < 100) {
-          try {
-            const goal = new goals.GoalNear(player.position.x, player.position.y, player.position.z, 2)
-            bot.pathfinder.setGoal(goal)
-            bot.lookAt(player.position.offset(0, 1.6, 0))
-          } catch (e) {}
-        } else {
-          bot.pathfinder.stop()
-        }
-      } else {
-        bot.pathfinder.stop()
-      }
-    }, 3000)
-
-    const chatLoop = () => {
-      if (!bot.entity) return
-      const msg = config.scaryMessages[Math.floor(Math.random() * config.scaryMessages.length)]
-      try { bot.chat(msg) } catch (e) {}
-      setTimeout(chatLoop, 20000 + Math.random() * 40000)
-    }
-    setTimeout(chatLoop, 5000 + Math.random() * 10000)
   })
-
-  bot.on('end', (reason) => {
-    console.log(`${botConfig.name} disconnected: ${reason}. Reconnecting in 10s...`)
-    setTimeout(() => createBot(botConfig), 10000)
-  })
-
-  bot.on('error', (err) => {
-    console.log(`${botConfig.name} error: ${err.message}`)
-  })
-
-  return bot
 }
 
-console.log('Starting PineconeMC haunting bots...')
-config.bots.forEach(createBot)
-console.log(`${config.bots.length} bots configured`)
+manager.on('update', () => {
+  broadcast({ type: 'bots', bots: manager.getStatus(), players: manager.getPlayers() })
+})
+
+wss.on('connection', (ws) => {
+  ws.authenticated = false
+
+  ws.on('message', (raw) => {
+    let data
+    try { data = JSON.parse(raw.toString()) } catch { return }
+
+    if (data.type === 'auth') {
+      if (data.password === config.dashboard.password) {
+        ws.authenticated = true
+        ws.send(JSON.stringify({ type: 'auth', ok: true }))
+        ws.send(JSON.stringify({ type: 'bots', bots: manager.getStatus(), players: manager.getPlayers() }))
+      } else {
+        ws.send(JSON.stringify({ type: 'auth', ok: false }))
+      }
+      return
+    }
+
+    if (!ws.authenticated) {
+      ws.send(JSON.stringify({ type: 'error', msg: 'Not authenticated' }))
+      return
+    }
+
+    if (data.type === 'command' && data.bot) {
+      const result = manager.sendCommand(data.bot, data.command, data.payload || {})
+      ws.send(JSON.stringify({ type: 'result', bot: data.bot, ...result }))
+      manager.emit('update')
+    }
+
+    if (data.type === 'broadcast' && data.command) {
+      const results = manager.broadcastCommand(data.command, data.payload || {})
+      ws.send(JSON.stringify({ type: 'results', results }))
+      manager.emit('update')
+    }
+
+    if (data.type === 'stop' && data.bot) {
+      const result = manager.stopBot(data.bot)
+      ws.send(JSON.stringify({ type: 'result', bot: data.bot, ...result }))
+    }
+
+    if (data.type === 'restart' && data.bot) {
+      const result = manager.restartBot(data.bot)
+      ws.send(JSON.stringify({ type: 'result', bot: data.bot, ...result }))
+    }
+
+    if (data.type === 'status') {
+      ws.send(JSON.stringify({ type: 'bots', bots: manager.getStatus(), players: manager.getPlayers() }))
+    }
+  })
+})
+
+const PORT = config.dashboard.port
+server.listen(PORT, () => {
+  console.log(`Dashboard: http://localhost:${PORT}`)
+  console.log(`Password: ${config.dashboard.password}`)
+  console.log(`${config.bots.length} bots configured`)
+})

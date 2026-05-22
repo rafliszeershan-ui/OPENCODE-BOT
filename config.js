@@ -3,6 +3,11 @@ module.exports = {
   port: 25565,
   version: false,
 
+  dashboard: {
+    password: 'pinecone123',
+    port: process.env.PORT || 3000,
+  },
+
   bots: [
     { name: 'Entity_303' },
     { name: 'Ghost_' },

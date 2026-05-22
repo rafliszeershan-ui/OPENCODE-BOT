@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PineconeMC | Bot Control</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="login">
+    <div class="login-card">
+      <div class="login-icon">&#9760;</div>
+      <h1>Bot Control</h1>
+      <p class="login-subtitle">PineconeMC Haunt System</p>
+      <input type="password" id="password-input" placeholder="Enter password" autocomplete="off" />
+      <button id="login-btn">Unlock</button>
+      <p id="login-error" class="hidden">Wrong password</p>
+    </div>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <header>
+      <h1><span class="skull">&#9760;</span> Bot Control <span class="skull">&#9760;</span></h1>
+      <div class="header-info">
+        <span id="online-count">0</span>/<span id="total-count">0</span> online
+        &middot; <span id="player-count">0</span> players
+        <button id="logout-btn" class="btn-small">Lock</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="broadcast-section">
+        <h2>Broadcast</h2>
+        <div class="broadcast-row">
+          <input type="text" id="broadcast-chat" placeholder="Send message to ALL bots..." />
+          <button id="broadcast-chat-btn">Send</button>
+        </div>
+        <div class="broadcast-actions">
+          <button id="broadcast-follow" class="btn-small">Follow nearest</button>
+          <button id="broadcast-stop" class="btn-small">Stop all</button>
+          <button id="broadcast-scary" class="btn-small">Trigger scary</button>
+        </div>
+      </section>
+
+      <section class="players-section">
+        <h2>Server Players</h2>
+        <div id="players-list" class="player-tags"><em>No data (server may be offline)</em></div>
+      </section>
+
+      <section class="bots-section">
+        <h2>Bots</h2>
+        <div id="bots-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "pinecone-bots",
-  "version": "1.0.0",
-  "description": "Haunted Minecraft bots for PineconeMC",
+  "version": "2.0.0",
+  "description": "Haunted Minecraft bots for PineconeMC with web dashboard",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "mineflayer": "^4.0.0",
-    "mineflayer-pathfinder": "^2.0.0"
+    "mineflayer-pathfinder": "^2.0.0",
+    "ws": "^8.16.0"
   }
 }
