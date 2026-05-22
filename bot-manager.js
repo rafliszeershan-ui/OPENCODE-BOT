@@ -1,6 +1,15 @@
 const EventEmitter = require('events')
-const mineflayer = require('mineflayer')
-const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
+
+let mineflayer, pathfinder, Movements, goals
+try {
+  mineflayer = require('mineflayer')
+  const pf = require('mineflayer-pathfinder')
+  pathfinder = pf.pathfinder
+  Movements = pf.Movements
+  goals = pf.goals
+} catch (e) {
+  console.error('Mineflayer load failed:', e.message)
+}
 
 function randomName(prefixes, suffixes) {
   const p = prefixes[Math.floor(Math.random() * prefixes.length)]
@@ -46,6 +55,10 @@ class BotManager extends EventEmitter {
   }
 
   startAll() {
+    if (!mineflayer) {
+      console.log('Mineflayer not available, skipping bots')
+      return
+    }
     this.config.bots.forEach(bc => this.startBot(bc))
   }
 
@@ -65,69 +78,75 @@ class BotManager extends EventEmitter {
   }
 
   connect(botConfig) {
-    const bot = mineflayer.createBot({
-      host: this.config.host,
-      port: this.config.port,
-      username: botConfig.name,
-      version: this.config.version,
-    })
+    try {
+      const bot = mineflayer.createBot({
+        host: this.config.host,
+        port: this.config.port,
+        username: botConfig.name,
+        version: this.config.version,
+      })
 
-    bot.loadPlugin(pathfinder)
-    const entry = this.bots[botConfig.name]
-    entry.bot = bot
-    entry.status = 'connecting'
+      if (pathfinder) bot.loadPlugin(pathfinder)
+      const entry = this.bots[botConfig.name]
+      entry.bot = bot
+      entry.status = 'connecting'
 
-    bot.on('spawn', () => {
-      entry.status = 'online'
-      entry.followTarget = null
-      this.emit('update')
+      bot.on('spawn', () => {
+        entry.status = 'online'
+        entry.followTarget = null
+        this.emit('update')
 
-      this.applySkin(botConfig, bot)
+        this.applySkin(botConfig, bot)
 
-      try {
-        const mcData = require('minecraft-data')(bot.version)
-        const defaultMove = new Movements(bot, mcData)
-        bot.pathfinder.setMovements(defaultMove)
-      } catch (e) {
-        console.log(`Movements failed for ${botConfig.name}: ${e.message}`)
-      }
+        try {
+          const mcData = require('minecraft-data')(bot.version)
+          if (Movements) {
+            const defaultMove = new Movements(bot, mcData)
+            bot.pathfinder.setMovements(defaultMove)
+          }
+        } catch (e) {
+          console.log(`Movements failed for ${botConfig.name}: ${e.message}`)
+        }
 
-      if (!entry._followInterval) {
-        entry._followInterval = setInterval(() => this.tickFollow(botConfig), 3000)
-      }
-      if (!entry._chatTimer) {
-        entry._chatTimer = true
-        this.scheduleChat(botConfig)
-      }
-    })
+        if (!entry._followInterval) {
+          entry._followInterval = setInterval(() => this.tickFollow(botConfig), 3000)
+        }
+        if (!entry._chatTimer) {
+          entry._chatTimer = true
+          this.scheduleChat(botConfig)
+        }
+      })
 
-    bot.on('kicked', (reason) => {
-      console.log(`${botConfig.name} was kicked: ${reason}`)
-    })
+      bot.on('kicked', (reason) => {
+        console.log(`${botConfig.name} kicked: ${reason}`)
+      })
 
-    bot.on('end', (reason) => {
-      const wasBanned = isBanned(reason)
-      const oldName = botConfig.name
+      bot.on('end', (reason) => {
+        const wasBanned = isBanned(reason)
+        const oldName = botConfig.name
 
-      if (wasBanned) {
-        const newName = this.freshName()
-        console.log(`${oldName} was BANNED! Respawned as ${newName}`)
-        this.usedNames.delete(oldName)
-        delete this.bots[oldName]
-        botConfig.name = newName
-        this.bots[newName] = entry
-        entry.config = botConfig
-      }
+        if (wasBanned) {
+          const newName = this.freshName()
+          console.log(`${oldName} BANNED! -> ${newName}`)
+          this.usedNames.delete(oldName)
+          delete this.bots[oldName]
+          botConfig.name = newName
+          this.bots[newName] = entry
+          entry.config = botConfig
+        }
 
-      entry.bot = null
-      entry.status = 'disconnected'
-      this.emit('update')
-      setTimeout(() => this.connect(botConfig), 10000)
-    })
+        entry.bot = null
+        entry.status = 'disconnected'
+        this.emit('update')
+        setTimeout(() => this.connect(botConfig), 10000)
+      })
 
-    bot.on('error', (err) => {
-      console.log(`${botConfig.name} error: ${err.message}`)
-    })
+      bot.on('error', (err) => {
+        console.log(`${botConfig.name} error: ${err.message}`)
+      })
+    } catch (e) {
+      console.log(`Connect failed for ${botConfig.name}: ${e.message}`)
+    }
   }
 
   tickFollow(botConfig) {
@@ -140,7 +159,7 @@ class BotManager extends EventEmitter {
     if (entry.followTarget) {
       if (this.isProtected(entry.followTarget)) {
         entry.followTarget = null
-        bot.pathfinder.stop()
+        if (bot.pathfinder) bot.pathfinder.stop()
         entry.status = 'online'
         return
       }
@@ -152,6 +171,7 @@ class BotManager extends EventEmitter {
         entry.following = entry.followTarget + ' (lost)'
       }
     } else {
+      if (!bot.nearestEntity) return
       const nearest = bot.nearestEntity(e => {
         if (e.type !== 'player') return false
         if (e.username === bot.username) return false
@@ -165,7 +185,7 @@ class BotManager extends EventEmitter {
       }
     }
 
-    if (target) {
+    if (target && goals) {
       const dist = bot.entity.position.distanceTo(target.position)
       if (dist < 100) {
         try {
@@ -179,7 +199,7 @@ class BotManager extends EventEmitter {
         return
       }
     }
-    bot.pathfinder.stop()
+    if (bot.pathfinder) bot.pathfinder.stop()
     if (!entry.followTarget) {
       entry.status = 'online'
     }
@@ -204,20 +224,22 @@ class BotManager extends EventEmitter {
 
   applySkin(botConfig, bot) {
     const idx = Object.keys(this.bots).indexOf(botConfig.name)
-    const skinUrl = `${this.config.dashboard.baseUrl || 'http://localhost:' + this.config.dashboard.port}/skin/${idx}`
+    const baseUrl = this.config.dashboard.baseUrl || 'http://localhost:' + this.config.dashboard.port
+    const skinUrl = baseUrl + '/skin/' + idx
     setTimeout(() => {
-      bot.chat(`/skin url ${skinUrl}`)
+      try { bot.chat('/skin url ' + skinUrl) } catch (e) {}
     }, 3000 + Math.random() * 2000)
     setTimeout(() => {
-      const name = CREEPY_SKIN_NAMES[Math.floor(Math.random() * CREEPY_SKIN_NAMES.length)]
-      bot.chat(`/skin ${name}`)
+      try {
+        const name = CREEPY_SKIN_NAMES[Math.floor(Math.random() * CREEPY_SKIN_NAMES.length)]
+        bot.chat('/skin ' + name)
+      } catch (e) {}
     }, 6000 + Math.random() * 3000)
   }
 
   sendCommand(botName, type, payload) {
     const entry = this.bots[botName]
     if (!entry || !entry.bot || !entry.bot.entity) return { ok: false, reason: 'Bot offline' }
-
     const bot = entry.bot
     switch (type) {
       case 'follow':
@@ -225,16 +247,16 @@ class BotManager extends EventEmitter {
           return { ok: false, reason: 'Cannot follow protected player' }
         }
         entry.followTarget = payload.player || null
-        return { ok: true, msg: `Following ${payload.player || 'nearest player'}` }
+        return { ok: true, msg: 'Following ' + (payload.player || 'nearest') }
       case 'stop_follow':
         entry.followTarget = null
-        bot.pathfinder.stop()
-        return { ok: true, msg: 'Stopped following' }
+        if (bot.pathfinder) bot.pathfinder.stop()
+        return { ok: true, msg: 'Stopped' }
       case 'chat':
         bot.chat(String(payload.message))
         entry.lastMessage = String(payload.message)
         this.emit('update')
-        return { ok: true, msg: 'Message sent' }
+        return { ok: true, msg: 'Sent' }
       case 'look':
         bot.look(parseFloat(payload.yaw) || 0, parseFloat(payload.pitch) || 0)
         return { ok: true, msg: 'Looked' }
@@ -245,30 +267,26 @@ class BotManager extends EventEmitter {
 
   stopBot(botName) {
     const entry = this.bots[botName]
-    if (!entry || !entry.bot) return { ok: false, reason: 'Bot not running' }
+    if (!entry || !entry.bot) return { ok: false, reason: 'Not running' }
     try { entry.bot.end('stopped') } catch (e) {}
     entry.bot = null
     entry.status = 'stopped'
     this.emit('update')
-    return { ok: true, msg: 'Bot stopped' }
+    return { ok: true, msg: 'Stopped' }
   }
 
   restartBot(botName) {
     this.stopBot(botName)
     const entry = this.bots[botName]
-    if (entry) {
-      setTimeout(() => this.connect(entry.config), 2000)
-    }
-    return { ok: true, msg: 'Restarting...' }
+    if (entry) setTimeout(() => this.connect(entry.config), 2000)
+    return { ok: true, msg: 'Restarting' }
   }
 
   broadcastCommand(type, payload) {
-    const results = []
-    Object.keys(this.bots).forEach(name => {
-      const r = this.sendCommand(name, type, payload)
-      results.push({ bot: name, ...r })
-    })
-    return results
+    return Object.keys(this.bots).map(name => ({
+      bot: name,
+      ...this.sendCommand(name, type, payload),
+    }))
   }
 
   getStatus() {

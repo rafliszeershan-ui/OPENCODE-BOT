@@ -1,4 +1,5 @@
-const zlib = require('zlib')
+let zlib
+try { zlib = require('zlib') } catch (e) {}
 
 function crc32(buf) {
   let c = 0xffffffff
@@ -48,7 +49,6 @@ function fillRect(raw, x, y, w, h, sw, sh, r, g, b, a) {
 function generateSkin(index) {
   const W = 64, H = 64
   const raw = Buffer.alloc((W * 4 + 1) * H)
-
   for (let y = 0; y < H; y++) raw[y * (W * 4 + 1)] = 0
 
   const pal = PALETTES[index % PALETTES.length]
@@ -66,22 +66,18 @@ function generateSkin(index) {
   fillRect(raw, 4, 20, 4, 12, W, H, pal.cloth[0] * 0.7 | 0, pal.cloth[1] * 0.7 | 0, pal.cloth[2] * 0.7 | 0, 255)
 
   fillRect(raw, 24, 0, 16, 8, W, H, pal.cloth[0], pal.cloth[1], pal.cloth[2], 255)
-
   fillRect(raw, 12, 8, 2, 6, W, H, 0, 0, 0, 100)
   fillRect(raw, 18, 8, 2, 6, W, H, 0, 0, 0, 100)
-
   fillRect(raw, 48, 0, 16, 16, W, H, pal.cloth[0], pal.cloth[1], pal.cloth[2], 255)
   fillRect(raw, 56, 8, 2, 2, W, H, pal.eyes[0], pal.eyes[1], pal.eyes[2], 255)
 
-  return toPNG(raw, W, H)
-}
+  if (!zlib) return null
 
-function toPNG(raw, w, h) {
   const compressed = zlib.deflateSync(raw)
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(w, 0)
-  ihdr.writeUInt32BE(h, 4)
+  ihdr.writeUInt32BE(W, 0)
+  ihdr.writeUInt32BE(H, 4)
   ihdr[8] = 8
   ihdr[9] = 6
   ihdr[10] = 0
