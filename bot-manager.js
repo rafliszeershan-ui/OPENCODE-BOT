@@ -2,11 +2,41 @@ const EventEmitter = require('events')
 const mineflayer = require('mineflayer')
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 
+function randomName(prefixes, suffixes) {
+  const p = prefixes[Math.floor(Math.random() * prefixes.length)]
+  const s = suffixes[Math.floor(Math.random() * suffixes.length)]
+  const n = Math.floor(Math.random() * 999)
+  return `${p}${n}${s}`
+}
+
+function isBanned(reason) {
+  if (!reason) return false
+  const r = reason.toLowerCase()
+  return r.includes('ban') || r.includes('kick') || r.includes('permanent') || r.includes('temp') || r.includes('ip')
+}
+
 class BotManager extends EventEmitter {
   constructor(config) {
     super()
     this.config = config
     this.bots = {}
+    this.usedNames = new Set()
+    config.bots.forEach(b => this.usedNames.add(b.name))
+  }
+
+  isProtected(name) {
+    return (this.config.protectedPlayers || []).some(p => p.toLowerCase() === (name || '').toLowerCase())
+  }
+
+  freshName() {
+    let name
+    let tries = 0
+    do {
+      name = randomName(this.config.botPrefixes, this.config.botSuffixes)
+      tries++
+    } while (this.usedNames.has(name) && tries < 100)
+    this.usedNames.add(name)
+    return name
   }
 
   startAll() {
@@ -22,7 +52,6 @@ class BotManager extends EventEmitter {
       lastMessage: null,
       startedAt: Date.now(),
       bot: null,
-      cmds: [],
     }
     this.bots[botConfig.name] = entry
     this.connect(botConfig)
@@ -64,7 +93,24 @@ class BotManager extends EventEmitter {
       }
     })
 
-    bot.on('end', () => {
+    bot.on('kicked', (reason) => {
+      console.log(`${botConfig.name} was kicked: ${reason}`)
+    })
+
+    bot.on('end', (reason) => {
+      const wasBanned = isBanned(reason)
+      const oldName = botConfig.name
+
+      if (wasBanned) {
+        const newName = this.freshName()
+        console.log(`${oldName} was BANNED! Respawned as ${newName}`)
+        this.usedNames.delete(oldName)
+        delete this.bots[oldName]
+        botConfig.name = newName
+        this.bots[newName] = entry
+        entry.config = botConfig
+      }
+
       entry.bot = null
       entry.status = 'disconnected'
       this.emit('update')
@@ -84,6 +130,12 @@ class BotManager extends EventEmitter {
     let target = null
 
     if (entry.followTarget) {
+      if (this.isProtected(entry.followTarget)) {
+        entry.followTarget = null
+        bot.pathfinder.stop()
+        entry.status = 'online'
+        return
+      }
       const pdata = Object.values(bot.players).find(p => p.username === entry.followTarget)
       if (pdata && pdata.entity) {
         target = pdata.entity
@@ -92,7 +144,11 @@ class BotManager extends EventEmitter {
         entry.following = entry.followTarget + ' (lost)'
       }
     } else {
-      const nearest = bot.nearestEntity(e => e.type === 'player' && e.username !== bot.username)
+      const nearest = bot.nearestEntity(e => {
+        if (e.type !== 'player') return false
+        if (e.username === bot.username) return false
+        return !this.isProtected(e.username)
+      })
       if (nearest) {
         target = nearest
         entry.following = nearest.username
@@ -145,6 +201,9 @@ class BotManager extends EventEmitter {
     const bot = entry.bot
     switch (type) {
       case 'follow':
+        if (payload.player && this.isProtected(payload.player)) {
+          return { ok: false, reason: 'Cannot follow protected player' }
+        }
         entry.followTarget = payload.player || null
         return { ok: true, msg: `Following ${payload.player || 'nearest player'}` }
       case 'stop_follow':

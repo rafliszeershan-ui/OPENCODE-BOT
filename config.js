@@ -8,6 +8,21 @@ module.exports = {
     port: process.env.PORT || 3000,
   },
 
+  protectedPlayers: [
+    'rafliszeershan',
+  ],
+
+  botPrefixes: [
+    'Entity_', 'Ghost_', 'Void_', 'Wither_', 'Notch_',
+    'Herobrine_', 'Shadow_', 'Phantom_', 'Spectre_', 'Spirit_',
+    'Cursed_', 'Haunted_', 'Possessed_', 'Demonic_', 'Eternal_',
+  ],
+
+  botSuffixes: [
+    '_303', '_666', '_xX', 'Xx', '_TV', '_HD',
+    '', '_MC', '_TheGhoul', '_TheVoid', '_Bot',
+  ],
+
   bots: [
     { name: 'Entity_303' },
     { name: 'Ghost_' },
