@@ -9,6 +9,12 @@ function randomName(prefixes, suffixes) {
   return `${p}${n}${s}`
 }
 
+const CREEPY_SKIN_NAMES = [
+  'Herobrine', 'Entity303', 'Deadmau5', 'Terrifying',
+  'Skeleton', 'Zombie', 'wither', 'ghastly',
+  'Shadow_', 'Nightmare', 'Phantom', 'Spectre',
+]
+
 function isBanned(reason) {
   if (!reason) return false
   const r = reason.toLowerCase()
@@ -75,6 +81,8 @@ class BotManager extends EventEmitter {
       entry.status = 'online'
       entry.followTarget = null
       this.emit('update')
+
+      this.applySkin(botConfig, bot)
 
       try {
         const mcData = require('minecraft-data')(bot.version)
@@ -192,6 +200,18 @@ class BotManager extends EventEmitter {
       }
       this.scheduleChat(botConfig)
     }, delay)
+  }
+
+  applySkin(botConfig, bot) {
+    const idx = Object.keys(this.bots).indexOf(botConfig.name)
+    const skinUrl = `${this.config.dashboard.baseUrl || 'http://localhost:' + this.config.dashboard.port}/skin/${idx}`
+    setTimeout(() => {
+      bot.chat(`/skin url ${skinUrl}`)
+    }, 3000 + Math.random() * 2000)
+    setTimeout(() => {
+      const name = CREEPY_SKIN_NAMES[Math.floor(Math.random() * CREEPY_SKIN_NAMES.length)]
+      bot.chat(`/skin ${name}`)
+    }, 6000 + Math.random() * 3000)
   }
 
   sendCommand(botName, type, payload) {

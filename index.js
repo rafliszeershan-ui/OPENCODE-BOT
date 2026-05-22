@@ -4,6 +4,7 @@ const path = require('path')
 const { WebSocketServer } = require('ws')
 const config = require('./config')
 const BotManager = require('./bot-manager')
+const skinGen = require('./skin')
 
 const app = express()
 const server = http.createServer(app)
@@ -11,6 +12,13 @@ const server = http.createServer(app)
 app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/health', (req, res) => res.send('OK'))
+
+app.get('/skin/:id', (req, res) => {
+  const id = parseInt(req.params.id) || 0
+  const png = skinGen.getSkin(id)
+  res.set('Content-Type', 'image/png')
+  res.send(png)
+})
 
 const wss = new WebSocketServer({ server })
 

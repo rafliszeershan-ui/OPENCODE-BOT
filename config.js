@@ -6,6 +6,7 @@ module.exports = {
   dashboard: {
     password: 'pinecone123',
     port: process.env.PORT || 3000,
+    baseUrl: process.env.BASE_URL || '',
   },
 
   protectedPlayers: [
